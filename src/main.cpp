@@ -169,32 +169,32 @@ void setup() {
   IrReceiver.begin(IR_PIN);
 }
 
-void tickMetronome(void)
-// flash a LED to the beat
-{
-  static uint32_t lastBeatTime = 0;
-  static boolean  inBeat = false;
-  uint16_t  beatTime;
+// void tickMetronome(void)
+// // flash a LED to the beat
+// {
+//   static uint32_t lastBeatTime = 0;
+//   static boolean  inBeat = false;
+//   uint16_t  beatTime;
 
-  beatTime = 60000/SMF.getTempo();    // msec/beat = ((60sec/min)*(1000 ms/sec))/(beats/min)
-  if (!inBeat)
-  {
-    if ((millis() - lastBeatTime) >= beatTime)
-    {
-      lastBeatTime = millis();
-      digitalWrite(ONBOARD_LED, HIGH);
-      inBeat = true;
-    }
-  }
-  else
-  {
-    if ((millis() - lastBeatTime) >= 100)	// keep the flash on for 100ms only
-    {
-      digitalWrite(ONBOARD_LED, LOW);
-      inBeat = false;
-    }
-  }
-}
+//   beatTime = 60000/SMF.getTempo();    // msec/beat = ((60sec/min)*(1000 ms/sec))/(beats/min)
+//   if (!inBeat)
+//   {
+//     if ((millis() - lastBeatTime) >= beatTime)
+//     {
+//       lastBeatTime = millis();
+//       digitalWrite(ONBOARD_LED, HIGH);
+//       inBeat = true;
+//     }
+//   }
+//   else
+//   {
+//     if ((millis() - lastBeatTime) >= 100)	// keep the flash on for 100ms only
+//     {
+//       digitalWrite(ONBOARD_LED, LOW);
+//       inBeat = false;
+//     }
+//   }
+// }
 
 void loop() {
   static enum { S_IDLE, S_PLAYING, S_END, S_WAIT_BETWEEN } state = S_IDLE;
@@ -239,8 +239,8 @@ void loop() {
     // DEBUGS("\nS_PLAYING");
     if (!SMF.isEOF())
     {
-      if (SMF.getNextEvent())
-        tickMetronome();
+      if (SMF.getNextEvent());
+        // tickMetronome();
         // Serial.println("TEST: SONG IN PROGRESS");
     }
     else
