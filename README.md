@@ -7,7 +7,7 @@ about it can be found here: https://drive.google.com/drive/folders/1LG2Ymoj-W-rW
 
 <b>Libraries in Use</b>
 
-- MD_MIDIFile
+- MD_MIDIFile:
 This incredibly helpful library basially does most of the heavy lifting when it comes to actually reading and interpreting the midi files. 10/10 would clone again
-- FastLED
+- FastLED:
 Relies on FastLED for the actual displat of each of the LEDS. 
