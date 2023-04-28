@@ -7,6 +7,7 @@
 #include <SdFat.h>
 #include <MD_MIDIFile.h>
 #include "piano/piano.h"
+#include "songHandler/songSelector.h"
 
 //MIDI LIBRARY
 // SD chip select pin for SPI comms.
@@ -26,7 +27,7 @@ const uint16_t WAIT_DELAY = 2000; // ms
 // The files in the tune list should be located on the SD card 
 // or an error will occur opening the file and the next in the 
 // list will be opened (skips errors).
-const char *tuneList[] = 
+static char *tuneList[] = 
 {
   "LOOPDEMO.MID",  // simplest and shortest file
   "BANDIT.MID",
@@ -60,6 +61,9 @@ MD_MIDIFile SMF;
 
 // Piano Library Declarations
 Piano piano;
+
+// Song Selector Class Declaration
+SongSelector songSelector;
 
 int activeChannel = 1;
 
@@ -136,7 +140,6 @@ long debounceDelay = 0;
 void setup() {
 
   pinMode(ONBOARD_LED,OUTPUT);
-
   
   FastLED.addLeds<WS2812,ARRAY_LED_PIN,GRB>(RGBleds,NUM_LEDS);
 
@@ -145,12 +148,15 @@ void setup() {
   Serial.begin(57600);
   Serial.println("STARTING...");
 
+  // Song Selector Startup
+  songSelector.setSongs(tuneList,20);
+  Serial.println(songSelector.getSelectedSong());
   //SD Card startup
-  if (!SD.begin(SD_SELECT, SPI_SIXTEENTH_SPEED))
-  {
-    DEBUGS("\nSD init fail!");
-    while (true) ;
-  }
+  // if (!SD.begin(SD_SELECT, SPI_SIXTEENTH_SPEED))
+  // {
+  //   DEBUGS("\nSD init fail!");
+  //   while (true) ;
+  // }
 
   // Initialize MIDIFile
   SMF.begin(&SD);
@@ -197,6 +203,7 @@ void setup() {
 // }
 
 void loop() {
+
   static enum { S_IDLE, S_PLAYING, S_END, S_WAIT_BETWEEN } state = S_IDLE;
   static uint16_t currTune = ARRAY_SIZE(tuneList);
   static uint32_t timeStart;
