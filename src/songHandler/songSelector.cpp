@@ -3,7 +3,7 @@
 
 SongSelector::SongSelector()
 {
-    _SongPlayer = SongPlayer();
+    
 }
 
 void SongSelector::indexSong(int num) {
@@ -37,17 +37,20 @@ void SongSelector::prevSong() {
 }
 
 void SongSelector::selectSong() {
-    _SongPlayer.load(_listOfSongs[_currentSelectedSong]);
+    _currentSong = _currentSelectedSong;
 }
 
 char * SongSelector::getPlayingSong() {
-    return _SongPlayer.getSong();
+    return _listOfSongs[_currentSong];
 }
 
 uint8_t SongSelector::getChannel() {
-    return _SongPlayer.getChannel();
+    return _currentChannel;
 }
 
 void SongSelector::setChannel(int channel) {
-    _SongPlayer.setChannel(channel);
+    if(channel <= 16)
+    {
+        _currentChannel = channel;
+    }
 }
