@@ -37,17 +37,6 @@ void LEDArray::updateKey(key * k, int pitch)
     _leds[pitch] = CHSV(map(octive,0,8,0,255),255,activeKey.velocity*2);
 }
 
-void LEDArray::turnOnKey(int pitch)
-{
-    _leds[pitch] = CHSV(255,255,255);
-}
-
-void LEDArray::turnOffKey(int pitch)
-{
-    _leds[pitch] = CHSV(255,255,0);
-}
-
-
 void LEDArray::displayLEDS(void)
 {
     convertLeds();
@@ -56,6 +45,7 @@ void LEDArray::displayLEDS(void)
 key LEDArray::mostRecent(key * keyList, int pitch) {
     long MRT = 0;
     key activeKey;
+    activeKey.pitch = pitch;
     int size = ceil((MAX_NUM_KEYS - pitch)/12);
     for(int i = 0; i < size; i ++) {
         key curKey = keyList[i*12 + pitch];
@@ -66,11 +56,14 @@ key LEDArray::mostRecent(key * keyList, int pitch) {
             if(curKey.last_update >= MRT) 
             {
                 activeKey = curKey;
+                MRT = curKey.last_update;
             }
         }
     }
     return activeKey;
 }
+
+
 
 //FADE OFF skeleton code
 /*

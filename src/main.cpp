@@ -65,9 +65,13 @@ Piano piano;
 // Song Selector Class Declaration
 SongSelector songSelector;
 
-int activeChannel = 1;
+//finite state machine Pause/play command
+boolean irPausePlay = false;
+boolean irStop = false;
 
 #define ONBOARD_LED 2
+void playingStateMachine();
+uint8_t playState = 0;
 
 void midiCallback(midi_event *pev)
 // Called by the MIDIFile library when a file event needs to be processed
@@ -80,9 +84,9 @@ void midiCallback(midi_event *pev)
   // DEBUGS(" Data");
   // for (uint8_t i=0; i<pev->size; i++)
   //   DEBUGX(" ", pev->data[i]);
-  if(pev->channel+1 == activeChannel){
+  songSelector.addChan(pev->channel);
+  if(pev->channel == songSelector.getChannel()){
     piano.updateKey(pev->data[0],pev->data[1],pev->data[2],millis());
-    piano.updateLEDS();
     FastLED.show();
   }
 }
@@ -110,8 +114,8 @@ void midiSilence(void)
   // When All Sound Off is received all oscillators will turn off, and their volume
   // envelopes are set to zero as soon as possible.
   ev.size = 0;
-  ev.data[ev.size++] = 0xb0;
-  ev.data[ev.size++] = 120;
+  ev.data[ev.size++] = 0x80;
+  ev.data[ev.size++] = 0;
   ev.data[ev.size++] = 0;
 
   for (ev.channel = 0; ev.channel < 16; ev.channel++)
@@ -121,8 +125,11 @@ void midiSilence(void)
 
 
 LiquidCrystal_I2C lcd(0x27,16,2);  // set the LCD address to 0x27 for a 16 chars and 2 line display
-
+byte b_play[8] = {0b00000,0b01000,0b01100,0b01110,0b01110,0b01100,0b01000,0b00000};
+byte b_pause[8] = {0b00000,0b01010,0b01010,0b01010,0b01010,0b01010,0b01010,0b00000};
+byte b_stop[8] = {0b00000,0b11111,0b01010,0b00100,0b00100,0b01010,0b11111,0b00000};
 void pianoPlaybackTest(uint16_t code);
+void LCDReadings();
 
 
 
@@ -135,12 +142,12 @@ int testVelocity[] = {};
 int testVel = 255;
 int currentKey = 0;
 
-long debounceDelay = 0;
+long debounceDelay = 1000;
 
 void setup() {
 
   pinMode(ONBOARD_LED,OUTPUT);
-  
+    
   FastLED.addLeds<WS2812,ARRAY_LED_PIN,GRB>(RGBleds,NUM_LEDS);
 
 
@@ -151,12 +158,13 @@ void setup() {
   // Song Selector Startup
   songSelector.setSongs(tuneList,20);
   Serial.println(songSelector.getSelectedSong());
+
   //SD Card startup
-  // if (!SD.begin(SD_SELECT, SPI_SIXTEENTH_SPEED))
-  // {
-  //   DEBUGS("\nSD init fail!");
-  //   while (true) ;
-  // }
+  if (!SD.begin(SD_SELECT, SPI_SIXTEENTH_SPEED))
+  {
+    DEBUGS("\nSD init fail!");
+    while (true) ;
+  }
 
   // Initialize MIDIFile
   SMF.begin(&SD);
@@ -167,6 +175,10 @@ void setup() {
   //LCD setup
   lcd.init();                      // initialize the lcd 
   lcd.backlight();
+  lcd.createChar(0,b_play);
+  lcd.createChar(1,b_pause);
+  lcd.createChar(2,b_stop);
+  
 
   //Piano Setup
 
@@ -175,64 +187,129 @@ void setup() {
   IrReceiver.begin(IR_PIN);
 }
 
-// void tickMetronome(void)
-// // flash a LED to the beat
-// {
-//   static uint32_t lastBeatTime = 0;
-//   static boolean  inBeat = false;
-//   uint16_t  beatTime;
-
-//   beatTime = 60000/SMF.getTempo();    // msec/beat = ((60sec/min)*(1000 ms/sec))/(beats/min)
-//   if (!inBeat)
-//   {
-//     if ((millis() - lastBeatTime) >= beatTime)
-//     {
-//       lastBeatTime = millis();
-//       digitalWrite(ONBOARD_LED, HIGH);
-//       inBeat = true;
-//     }
-//   }
-//   else
-//   {
-//     if ((millis() - lastBeatTime) >= 100)	// keep the flash on for 100ms only
-//     {
-//       digitalWrite(ONBOARD_LED, LOW);
-//       inBeat = false;
-//     }
-//   }
-// }
 
 void loop() {
+  //deal with piano playing
+  playingStateMachine();
 
-  static enum { S_IDLE, S_PLAYING, S_END, S_WAIT_BETWEEN } state = S_IDLE;
-  static uint16_t currTune = ARRAY_SIZE(tuneList);
-  static uint32_t timeStart;
+  //IR Sensor readings
+  if(millis() > debounceDelay) {
+    if (IrReceiver.decode()) {
+
+        /*
+          * !!!Important!!! Enable receiving of the next value,
+          * since receiving has stopped after the end of the current received data packet.
+          */
+        IrReceiver.resume();
+        debounceDelay = millis() + 1000;
+        Serial.println(IrReceiver.decodedIRData.command);
+        Serial.println("READING");
+        pianoPlaybackTest(IrReceiver.decodedIRData.command);
+    }
+  } else if(IrReceiver.available())
+  {
+    if(IrReceiver.decode()) {
+      IrReceiver.resume();
+    }
+  }
+
+  //Display LCD readings.
+  LCDReadings();
+
+      // lcd.clear();
+      // lcd.print("C-1");
+      // lcd.display();
+
+}
+
+// Deals with LCD readings, what shold be displayed.
+void LCDReadings() 
+{
+  lcd.setCursor(0,0);
+  const char* playingSong = songSelector.getPlayingSong();
+  const char* selectedSong = songSelector.getSelectedSong();
+  if(strcmp(playingSong,selectedSong) == 0)
+  {
+    switch(playState)
+    {
+      case 1:
+        lcd.write((uint8_t)0);
+        break;
+      case 2:
+        lcd.write((uint8_t)1);
+        break;
+      default:
+        lcd.write((uint8_t)2);
+        break;
+    }
+  }
+  else{
+    lcd.print(" ");
+  }
+  // FIX LATER FOR DYNAIC INDEX LENGTHS !!!!!
+  int numLen = std::to_string((int)songSelector.getSelIndex()).length();
+  for(int i = 0; i < 14 - numLen; i++)
+  {
+    if( i >= strlen(selectedSong)) {
+      lcd.print(" ");
+    } 
+    else {
+      lcd.print(selectedSong[i]);
+    }
+  }
+  lcd.print(" ");
+  lcd.print(songSelector.getSelIndex());
+  lcd.setCursor(0,1);
+  lcd.print("CH:");
+  lcd.print(songSelector.getChannel());
+  lcd.print(" A:");
+  lcd.print(songSelector.getPlayIndex());
+   switch(playState)
+    {
+      case 1:
+        lcd.write((uint8_t)0);
+        break;
+      case 2:
+        lcd.write((uint8_t)1);
+        break;
+      default:
+        lcd.write((uint8_t)2);
+        break;
+    }
+  lcd.print(" ");
+  for(int i = 0; i < 5; i++)
+  {
+    if( i >= strlen(playingSong)) {
+      lcd.print(" ");
+    } 
+    else {
+      lcd.print(playingSong[i]);
+    }
+  }
+  lcd.display();
+
+
+}
+
+// Deals with playing songs, whether to idle, stop, play, etc.
+void playingStateMachine() {
+  static enum { S_IDLE, S_PLAYING, S_PAUSED, S_END } state = S_IDLE;
 
   switch (state)
   {
-  case S_IDLE:    // now idle, set up the next tune
+  case S_IDLE:    // now idle, wait for play signal.
+    if(irPausePlay)
     {
+      irPausePlay = false;
       int err;
-
-      DEBUGS("\nS_IDLE");
-
-      // digitalWrite(READY_LED, LOW);
-      // digitalWrite(SMF_ERROR_LED, LOW);
-
-      currTune++;
-      if (currTune >= ARRAY_SIZE(tuneList))
-        currTune = 0;
-
-      // use the next file name and play it
-      DEBUG("\nFile: ", tuneList[currTune]);
-      err = SMF.load(tuneList[currTune]);
+      //attempt to load the current song
+      err = SMF.load(songSelector.getPlayingSong());
       if (err != MD_MIDIFile::E_OK)
       {
         DEBUG(" - SMF load Error ", err);
         // digitalWrite(SMF_ERROR_LED, HIGH);
-        timeStart = millis();
-        state = S_WAIT_BETWEEN;
-        DEBUGS("\nWAIT_BETWEEN");
+        state = S_IDLE;
+        DEBUGS("\nS_IDLE");
       }
       else
       {
@@ -244,143 +321,145 @@ void loop() {
 
   case S_PLAYING: // play the file
     // DEBUGS("\nS_PLAYING");
-    if (!SMF.isEOF())
+    if (!SMF.isEOF() && !irStop)
     {
-      if (SMF.getNextEvent());
+      if(irPausePlay) 
+      {
+        irPausePlay = false;
+        SMF.pause(true);
+        state = S_PAUSED;
+      }
+      else if (SMF.getNextEvent());
         // tickMetronome();
         // Serial.println("TEST: SONG IN PROGRESS");
     }
     else
+    {
+      irStop = false;
       state = S_END;
+    }
+    break;
+
+  case S_PAUSED:
+    // if song is unplaused, go back to playing state
+    if(irPausePlay)
+    {
+      irPausePlay = false;
+      SMF.pause(false);
+      state = S_PLAYING;
+    } 
+    // if song is stopped, go to end state.
+    else if(irStop)
+    {
+      irStop = false;
+      SMF.pause(false);
+      state = S_END;
+    }
+
     break;
 
   case S_END:   // done with this one
     DEBUGS("\nS_END");
+    piano.resetKeys();
     SMF.close();
     midiSilence();
-    timeStart = millis();
-    state = S_WAIT_BETWEEN;
-    DEBUGS("\nWAIT_BETWEEN");
-    break;
-
-  case S_WAIT_BETWEEN:    // signal finished with a dignified pause
-    // digitalWrite(READY_LED, HIGH);
-    if (millis() - timeStart >= WAIT_DELAY)
-      state = S_IDLE;
+    FastLED.show();
+    songSelector.resetActChan();
+    state = S_IDLE;
+    // DEBUGS("\nWAIT_BETWEEN");
     break;
 
   default:
     state = S_IDLE;
     break;
   }
-
-  //LCD monitor print
-  if(millis() > debounceDelay) {
-  if (IrReceiver.decode()) {
-      /*
-        * !!!Important!!! Enable receiving of the next value,
-        * since receiving has stopped after the end of the current received data packet.
-        */
-      IrReceiver.resume(); // Enable receiving of the next value
-      debounceDelay = millis() + 500;
-      /*
-        * Finally, check the received data and perform actions according to the received command
-        */
-  }
-  }
-
+  playState = state;
 }
 
+//decideds what to do based on each button press from the IR Remote
 void pianoPlaybackTest(uint16_t code) {
   switch(code) {
-    case remote0:
-      lcd.clear();
-      lcd.print("C-1");
-      lcd.display();
-      break;
-
-    case remote1:
-      lcd.clear();
-      lcd.print("C0");
-      lcd.display();
-      break;
-
-    case remote2:
-      lcd.clear();
-      lcd.print("C1");
-      lcd.display();
-      break;
-
-    case remote3:
-      lcd.clear();
-      lcd.print("C2");
-      lcd.display();
-      break;
-
-    case remote4:
-      lcd.clear();
-      lcd.print("C3");
-      lcd.display();
-      break;
-
-    case remote5:
-      lcd.clear();
-      lcd.print("C4");
-      lcd.display();
-      break;
-
-    case remote6:
-      lcd.clear();
-      lcd.print("C5");
-      lcd.display();
-      break;
-
-    case remote7:
-      lcd.clear();
-      lcd.print("C6");
-      lcd.display();
-      break;
-
-    case remote8:
-      lcd.clear();
-      lcd.print("C7");
-      lcd.display();
-      break;
-
-    case remote9:
-      lcd.clear();
-      lcd.print("OFF");
-      lcd.display();
-      break;
-
     case remoteUp:
-      if(activeChannel < 20) {
-        activeChannel = activeChannel+1;
-      }
-      Serial.println(activeChannel);
+      songSelector.nextSong();
+      Serial.println(songSelector.getSelectedSong());
       break;
 
     case remoteDown:
-      if(activeChannel > 0) {
-        activeChannel = activeChannel-1;
-      }
-      Serial.println(activeChannel);
+      songSelector.prevSong();
+      Serial.println(songSelector.getSelectedSong());
       break;
 
     case remoteRight:
-      currentKey = (currentKey + 1)%12;
-      lcd.clear();
-      lcd.print(currentKey);
-      lcd.display();
+      bool act;
+      bool * active;
+      int tries;
+      tries = 0;
+      // check for the next active channel
+      do {
+        songSelector.nextChan();
+        active = songSelector.getActChan();
+        act = active[songSelector.getChannel()];
+        Serial.println(act);
+        tries++;
+      }
+      while (!act && tries < MAX_NUM_CHANNELS);
+
+      piano.resetKeys();
+      Serial.println(songSelector.getChannel());
+      FastLED.show();
       break;
 
     case remoteLeft:
-      currentKey = (currentKey + 11)%12;
-      lcd.clear();
-      lcd.print(currentKey);
-      lcd.display();
+      tries = 0;
+      //check for the prev active channel
+      do {
+      songSelector.prevChan();
+      active = songSelector.getActChan();
+      act = active[songSelector.getChannel()];
+      Serial.println(act);
+      tries++;
+      }
+      while (!act && tries < MAX_NUM_CHANNELS);
+
+      piano.resetKeys();
+      Serial.println(songSelector.getChannel());
+      FastLED.show();
       break;
 
+    case remoteEnterSave:
+      songSelector.selectSong();
+      irStop = true;
+      break;
+    
+    case remotePlayPause:
+      irPausePlay = true;
+      break;
+
+    case remoteStopMode:
+      irStop = true;
+      break;
+    case remote0:
+      piano.resetKeys();
+      break;
+    case remote1:
+      piano.turnOnKey(60);
+      break;
+    case remote2:
+      piano.turnOffKey(60);
+      break;
+    case remote3:
+      piano.updateLEDS();
+      break;
+    case remote4:
+      // piano.updateKey(0x80,60,255,millis());
+      // piano.updateLEDS();
+      FastLED.show();
+      break;
+      
+    case remote5:
+      piano.turnOnKey(72);
+      piano.turnOnKey(73);
+      break;
   }
 }
 

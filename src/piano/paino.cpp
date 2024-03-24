@@ -30,6 +30,7 @@ void Piano::updateKey(uint8_t code, uint8_t pitch, uint8_t velocity,long tick)
         default:
         break;
     }
+    updateLEDS();
 
 }
 
@@ -55,11 +56,25 @@ void Piano::updateLEDS() {
 }
 
 void Piano::turnOnKey(int pitch) {
-    _LEDArray.turnOnKey(pitch);
+    _keys[pitch].state = true;
+    _keys[pitch].velocity = 255;
+    _keys[pitch].last_update = millis();
+    updateLEDS();
 }
 
 void Piano::turnOffKey(int pitch) {
-    _LEDArray.turnOffKey(pitch);
+    _keys[pitch].state = false;
+    _keys[pitch].last_update = millis();
+    updateLEDS();
+}
+
+void Piano::resetKeys() {
+    for(int i = 0; i < MAX_NUM_KEYS;i++) {
+        _keys[i].last_update = 0;
+        _keys[i].state = false;
+        _keys[i].velocity = 0;
+    }
+    updateLEDS();
 }
 
 

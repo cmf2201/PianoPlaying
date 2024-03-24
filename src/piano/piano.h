@@ -53,10 +53,6 @@ class LEDArray
     //converts the LEDS in the HSV array to the RGB array
     void convertLeds(void);
 
-    void turnOnKey(int pitch);
-    
-    void turnOffKey(int pitch);
-
 };
 
 //Piano class to keep track of the midi events
@@ -85,6 +81,8 @@ class Piano
     void turnOnKey(int pitch);
 
     void turnOffKey(int pitch);
+    //Turns off all keys
+    void resetKeys();
 
 
     private:
